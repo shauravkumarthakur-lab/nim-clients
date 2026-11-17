@@ -1,26 +1,130 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ── MarginOS design tokens ──
+   Ink & paper neutrals (warm), one brand accent ("margin teal"),
+   semantic colours for gain / loss / warning. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg: #f7f7f4;
+  --surface: #ffffff;
+  --surface-2: #f1f1ed;
+  --border: #e4e4de;
+  --border-strong: #d2d2ca;
+  --fg: #16181d;
+  --fg-muted: #5d6068;
+  --fg-subtle: #8b8e95;
+  --brand: #0d8a78;
+  --brand-fg: #ffffff;
+  --brand-soft: #e2f3ef;
+  --gain: #0d8a78;
+  --loss: #d93f3f;
+  --loss-soft: #fbeaea;
+  --warn: #b7791f;
+  --warn-soft: #fbf1df;
+  --info: #3b5bdb;
+  --info-soft: #e8ecfb;
+  --ring: #0d8a7866;
+  --chart-1: #0d8a78;
+  --chart-2: #16181d;
+  --chart-3: #c9a227;
+  --chart-4: #6e7bd8;
+  --chart-5: #d97757;
+  --chart-grid: #e8e8e2;
+  --shadow: 0 1px 2px rgb(16 24 32 / 0.04), 0 1px 1px rgb(16 24 32 / 0.03);
+}
+
+.dark {
+  --bg: #0c0d10;
+  --surface: #131519;
+  --surface-2: #1a1c21;
+  --border: #25282e;
+  --border-strong: #33363d;
+  --fg: #ecedef;
+  --fg-muted: #a0a3ab;
+  --fg-subtle: #6e717a;
+  --brand: #2cc5ae;
+  --brand-fg: #071512;
+  --brand-soft: #10302b;
+  --gain: #3fd0b8;
+  --loss: #ff6b6b;
+  --loss-soft: #3a1717;
+  --warn: #f0b545;
+  --warn-soft: #33270f;
+  --info: #8ea2ff;
+  --info-soft: #1b2140;
+  --ring: #2cc5ae66;
+  --chart-1: #2cc5ae;
+  --chart-2: #d7d9de;
+  --chart-3: #e3bd45;
+  --chart-4: #8ea2ff;
+  --chart-5: #f08f6f;
+  --chart-grid: #23262c;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.4);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-fg: var(--fg);
+  --color-muted: var(--fg-muted);
+  --color-subtle: var(--fg-subtle);
+  --color-brand: var(--brand);
+  --color-brand-fg: var(--brand-fg);
+  --color-brand-soft: var(--brand-soft);
+  --color-gain: var(--gain);
+  --color-loss: var(--loss);
+  --color-loss-soft: var(--loss-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-sans);
+    font-feature-settings: "ss01", "cv11";
+    overflow-x: hidden;
+  }
+  * {
+    border-color: var(--border);
+  }
+  :focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+  }
+  input, select, textarea, button {
+    font: inherit;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@utility num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+@utility card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+
+@media print {
+  .no-print { display: none !important; }
+  body { background: #fff; color: #000; }
+  .card { box-shadow: none; border-color: #ccc; }
+  @page { margin: 14mm; }
 }
