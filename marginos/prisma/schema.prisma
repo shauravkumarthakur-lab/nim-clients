@@ -1,0 +1,709 @@
+// MarginOS — multi-tenant schema.
+// Every tenant-owned table carries `orgId`. All application queries are scoped
+// through `src/lib/tenant.ts`, which takes orgId from the server-side session only.
+// Money is stored as Decimal(14,2); hours as Decimal(8,2). Never Float.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ───────────────────────────── Identity & tenancy ─────────────────────────────
+
+enum Role {
+  OWNER
+  ADMIN
+  FINANCE
+  MANAGER
+  MEMBER
+  CLIENT
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  memberships  Membership[]
+  sessions     Session[]
+  resetTokens  PasswordResetToken[]
+  auditLogs    AuditLog[]
+}
+
+model Session {
+  id          String   @id @default(cuid())
+  tokenHash   String   @unique
+  userId      String
+  activeOrgId String?
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+  userAgent   String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// Outbound email log. In development (no SMTP configured) this is the "mailbox".
+model OutboundEmail {
+  id        String   @id @default(cuid())
+  to        String
+  subject   String
+  body      String
+  createdAt DateTime @default(now())
+}
+
+enum OverheadMethod {
+  REVENUE_SHARE
+  LABOUR_HOURS
+}
+
+model Organization {
+  id                  String         @id @default(cuid())
+  name                String
+  slug                String         @unique
+  industry            String?
+  employeeCount       String?
+  currency            String         @default("INR")
+  revenueRange        String?
+  billingModel        String?
+  isDemo              Boolean        @default(false)
+  onboardingCompleted Boolean        @default(false)
+  overheadMethod      OverheadMethod @default(REVENUE_SHARE)
+  targetMarginPct     Decimal        @default(35) @db.Decimal(5, 2)
+  utilisationTarget   Decimal        @default(75) @db.Decimal(5, 2)
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  memberships       Membership[]
+  invitations       Invitation[]
+  auditLogs         AuditLog[]
+  clients           Client[]
+  projects          Project[]
+  deliverables      Deliverable[]
+  employees         Employee[]
+  freelancers       Freelancer[]
+  assignments       ProjectAssignment[]
+  timeEntries       TimeEntry[]
+  expenseCategories ExpenseCategory[]
+  vendors           Vendor[]
+  expenses          Expense[]
+  invoices          Invoice[]
+  payments          Payment[]
+  scopeChanges      ScopeChange[]
+  mediaCampaigns    MediaCampaign[]
+  sharedReports     SharedReport[]
+  integrations      IntegrationConnection[]
+  advisorMessages   AdvisorMessage[]
+}
+
+model Membership {
+  id        String   @id @default(cuid())
+  userId    String
+  orgId     String
+  role      Role
+  /// For CLIENT role: the client record this portal user belongs to.
+  clientId  String?
+  createdAt DateTime @default(now())
+
+  user   User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  org    Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  client Client?      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, orgId])
+  @@index([orgId])
+}
+
+model Invitation {
+  id         String    @id @default(cuid())
+  orgId      String
+  email      String
+  role       Role
+  clientId   String?
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  acceptedAt DateTime?
+  invitedBy  String?
+  createdAt  DateTime  @default(now())
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  orgId      String
+  userId     String?
+  action     String
+  entityType String
+  entityId   String?
+  details    Json?
+  createdAt  DateTime @default(now())
+
+  org  Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([orgId, createdAt])
+}
+
+// ───────────────────────────── Clients & projects ─────────────────────────────
+
+enum BillingFrequency {
+  MONTHLY
+  QUARTERLY
+  MILESTONE
+  ONE_TIME
+  ANNUAL
+}
+
+enum ClientStatus {
+  ACTIVE
+  PAUSED
+  CHURNED
+  PROSPECT
+}
+
+model Client {
+  id                String           @id @default(cuid())
+  orgId             String
+  name              String
+  company           String?
+  industry          String?
+  contactName       String?
+  email             String?
+  phone             String?
+  address           String?
+  contractValue     Decimal          @default(0) @db.Decimal(14, 2)
+  billingFrequency  BillingFrequency @default(MONTHLY)
+  contractStart     DateTime?
+  contractEnd       DateTime?
+  accountManagerId  String?
+  status            ClientStatus     @default(ACTIVE)
+  notes             String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  org            Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  accountManager Employee?       @relation("AccountManager", fields: [accountManagerId], references: [id], onDelete: SetNull)
+  projects       Project[]
+  invoices       Invoice[]
+  expenses       Expense[]
+  mediaCampaigns MediaCampaign[]
+  sharedReports  SharedReport[]
+  portalUsers    Membership[]
+
+  @@index([orgId])
+}
+
+enum ProjectStatus {
+  PLANNING
+  ACTIVE
+  ON_HOLD
+  COMPLETED
+  CANCELLED
+}
+
+model Project {
+  id               String        @id @default(cuid())
+  orgId            String
+  clientId         String
+  name             String
+  description      String?
+  managerId        String?
+  startDate        DateTime?
+  endDate          DateTime?
+  /// Cost budget (what the agency plans to spend delivering the project).
+  budget           Decimal       @default(0) @db.Decimal(14, 2)
+  /// Agreed fee with the client.
+  contractValue    Decimal       @default(0) @db.Decimal(14, 2)
+  budgetHours      Decimal       @default(0) @db.Decimal(8, 2)
+  targetMarginPct  Decimal?      @db.Decimal(5, 2)
+  revisionLimit    Int           @default(2)
+  status           ProjectStatus @default(ACTIVE)
+  sharedWithClient Boolean       @default(false)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  org          Organization        @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  client       Client              @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  manager      Employee?           @relation("ProjectManager", fields: [managerId], references: [id], onDelete: SetNull)
+  deliverables Deliverable[]
+  assignments  ProjectAssignment[]
+  timeEntries  TimeEntry[]
+  expenses     Expense[]
+  invoices     Invoice[]
+  scopeChanges ScopeChange[]
+  campaigns    MediaCampaign[]
+
+  @@index([orgId])
+  @@index([clientId])
+}
+
+enum DeliverableType {
+  REEL
+  SHORT_VIDEO
+  LONG_VIDEO
+  PHOTOGRAPHY
+  GRAPHIC_DESIGN
+  BRAND_IDENTITY
+  SOCIAL_POST
+  AD_CREATIVE
+  INFLUENCER_CAMPAIGN
+  WEBSITE
+  OTHER
+}
+
+enum DeliverableStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  IN_REVIEW
+  CHANGES_REQUESTED
+  APPROVED
+  DELIVERED
+}
+
+model Deliverable {
+  id                 String            @id @default(cuid())
+  orgId              String
+  projectId          String
+  type               DeliverableType
+  title              String
+  quantityContracted Int               @default(1)
+  quantityCompleted  Int               @default(0)
+  revisionCount      Int               @default(0)
+  /// null → inherit project.revisionLimit
+  revisionLimit      Int?
+  shootDays          Decimal           @default(0) @db.Decimal(6, 2)
+  /// Portion of project fee attributed to this deliverable line.
+  revenueAllocation  Decimal           @default(0) @db.Decimal(14, 2)
+  /// True when this deliverable was not in the original contract.
+  outOfScope         Boolean           @default(false)
+  status             DeliverableStatus @default(NOT_STARTED)
+  dueDate            DateTime?
+  sharedWithClient   Boolean           @default(false)
+  clientFeedback     String?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  org          Organization  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  timeEntries  TimeEntry[]
+  expenses     Expense[]
+  scopeChanges ScopeChange[]
+
+  @@index([orgId])
+  @@index([projectId])
+}
+
+// ───────────────────────────── People ─────────────────────────────
+
+model Employee {
+  id                 String    @id @default(cuid())
+  orgId              String
+  name               String
+  email              String?
+  department         String
+  designation        String
+  monthlySalary      Decimal   @db.Decimal(14, 2)
+  /// Employer-side load on top of salary (PF, insurance, benefits, equipment) in %.
+  benefitsLoadPct    Decimal   @default(0) @db.Decimal(5, 2)
+  /// Contracted working hours per month (capacity).
+  monthlyHours       Decimal   @default(176) @db.Decimal(6, 2)
+  joinedOn           DateTime?
+  leftOn             DateTime?
+  active             Boolean   @default(true)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  org             Organization        @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  managedClients  Client[]            @relation("AccountManager")
+  managedProjects Project[]           @relation("ProjectManager")
+  assignments     ProjectAssignment[]
+  timeEntries     TimeEntry[]
+
+  @@index([orgId])
+}
+
+enum RateType {
+  HOURLY
+  FIXED
+}
+
+model Freelancer {
+  id        String   @id @default(cuid())
+  orgId     String
+  name      String
+  email     String?
+  phone     String?
+  skill     String
+  rateType  RateType @default(HOURLY)
+  rate      Decimal  @db.Decimal(14, 2)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  org         Organization        @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  assignments ProjectAssignment[]
+  expenses    Expense[]
+
+  @@index([orgId])
+}
+
+model ProjectAssignment {
+  id             String   @id @default(cuid())
+  orgId          String
+  projectId      String
+  employeeId     String?
+  freelancerId   String?
+  role           String?
+  allocatedHours Decimal  @default(0) @db.Decimal(8, 2)
+  createdAt      DateTime @default(now())
+
+  org        Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  project    Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  employee   Employee?    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  freelancer Freelancer?  @relation(fields: [freelancerId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@index([projectId])
+}
+
+enum WorkType {
+  PLANNING
+  SHOOT
+  PRODUCTION
+  EDITING
+  DESIGN
+  REVISION
+  ACCOUNT_MANAGEMENT
+  OTHER
+}
+
+model TimeEntry {
+  id            String   @id @default(cuid())
+  orgId         String
+  employeeId    String
+  projectId     String
+  deliverableId String?
+  date          DateTime
+  hours         Decimal  @db.Decimal(6, 2)
+  workType      WorkType @default(PRODUCTION)
+  billable      Boolean  @default(true)
+  /// Work performed outside the contracted scope.
+  outOfScope    Boolean  @default(false)
+  /// Loaded hourly cost snapshot at time of entry (so salary changes don't rewrite history).
+  costRate      Decimal  @db.Decimal(12, 2)
+  notes         String?
+  createdAt     DateTime @default(now())
+
+  org         Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  employee    Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  deliverable Deliverable? @relation(fields: [deliverableId], references: [id], onDelete: SetNull)
+
+  @@index([orgId, date])
+  @@index([projectId])
+}
+
+// ───────────────────────────── Money ─────────────────────────────
+
+enum ExpenseKind {
+  FREELANCER
+  PRODUCTION
+  EQUIPMENT
+  TRAVEL
+  SOFTWARE
+  OFFICE
+  MARKETING
+  PROFESSIONAL_FEES
+  OTHER
+}
+
+model ExpenseCategory {
+  id        String      @id @default(cuid())
+  orgId     String
+  name      String
+  kind      ExpenseKind
+  createdAt DateTime    @default(now())
+
+  org      Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  expenses Expense[]
+
+  @@unique([orgId, name])
+}
+
+model Vendor {
+  id        String   @id @default(cuid())
+  orgId     String
+  name      String
+  email     String?
+  phone     String?
+  category  String?
+  createdAt DateTime @default(now())
+
+  org      Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  expenses Expense[]
+
+  @@index([orgId])
+}
+
+enum PaymentStatus {
+  UNPAID
+  PAID
+}
+
+enum RecurringInterval {
+  MONTHLY
+  QUARTERLY
+  ANNUAL
+}
+
+model Expense {
+  id                String             @id @default(cuid())
+  orgId             String
+  date              DateTime
+  /// Positive = cost. Negative = refund/credit (reduces cost).
+  amount            Decimal            @db.Decimal(14, 2)
+  description       String
+  categoryId        String
+  vendorId          String?
+  freelancerId      String?
+  /// Always resolved server-side from project when a project is set.
+  clientId          String?
+  projectId         String?
+  deliverableId     String?
+  outOfScope        Boolean            @default(false)
+  isRecurring       Boolean            @default(false)
+  recurringInterval RecurringInterval?
+  /// For generated occurrences: the template expense id.
+  recurringSourceId String?
+  paymentStatus     PaymentStatus      @default(PAID)
+  paidAt            DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  org         Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  category    ExpenseCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  vendor      Vendor?         @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  freelancer  Freelancer?     @relation(fields: [freelancerId], references: [id], onDelete: SetNull)
+  client      Client?         @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  project     Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  deliverable Deliverable?    @relation(fields: [deliverableId], references: [id], onDelete: SetNull)
+
+  @@index([orgId, date])
+  @@index([projectId])
+  @@index([clientId])
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PARTIALLY_PAID
+  PAID
+  VOID
+}
+
+model Invoice {
+  id               String        @id @default(cuid())
+  orgId            String
+  clientId         String
+  projectId        String?
+  number           String
+  description      String?
+  issueDate        DateTime
+  dueDate          DateTime
+  /// Pre-tax amount — this is recognised agency revenue. Negative for credit notes.
+  subtotal         Decimal       @db.Decimal(14, 2)
+  taxAmount        Decimal       @default(0) @db.Decimal(14, 2)
+  /// Reimbursable media spend passed through to client (NOT revenue).
+  passThrough      Decimal       @default(0) @db.Decimal(14, 2)
+  status           InvoiceStatus @default(DRAFT)
+  sharedWithClient Boolean       @default(true)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  org          Organization  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  client       Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  project      Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  payments     Payment[]
+  scopeChanges ScopeChange[]
+
+  @@unique([orgId, number])
+  @@index([orgId, issueDate])
+}
+
+model Payment {
+  id        String   @id @default(cuid())
+  orgId     String
+  invoiceId String
+  date      DateTime
+  /// Negative amount = refund to client.
+  amount    Decimal  @db.Decimal(14, 2)
+  method    String?
+  reference String?
+  createdAt DateTime @default(now())
+
+  org     Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  invoice Invoice      @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, date])
+}
+
+// ───────────────────────────── Scope creep ─────────────────────────────
+
+enum ScopeChangeType {
+  ADDITIONAL_DELIVERABLE
+  EXTRA_REVISION
+  SCOPE_CHANGE
+  EXTRA_SHOOT_DAY
+  EXTRA_EDITING
+  UNPLANNED_WORK
+  OUT_OF_CONTRACT
+}
+
+enum ScopeChangeStatus {
+  LOGGED
+  QUOTED
+  APPROVED
+  REJECTED
+  ABSORBED
+  INVOICED
+}
+
+model ScopeChange {
+  id               String            @id @default(cuid())
+  orgId            String
+  projectId        String
+  deliverableId    String?
+  type             ScopeChangeType
+  title            String
+  description      String?
+  requestedAt      DateTime          @default(now())
+  requestedBy      String?
+  estimatedHours   Decimal           @default(0) @db.Decimal(8, 2)
+  estimatedCost    Decimal           @default(0) @db.Decimal(14, 2)
+  quotedAmount     Decimal?          @db.Decimal(14, 2)
+  changeRequestNo  String?
+  status           ScopeChangeStatus @default(LOGGED)
+  sharedWithClient Boolean           @default(false)
+  clientResponse   String?
+  invoiceId        String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  org         Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  deliverable Deliverable? @relation(fields: [deliverableId], references: [id], onDelete: SetNull)
+  invoice     Invoice?     @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+
+  @@index([orgId])
+  @@index([projectId])
+}
+
+// ───────────────────────────── Media economics ─────────────────────────────
+
+enum AdPlatform {
+  META
+  GOOGLE
+  YOUTUBE
+  LINKEDIN
+  OTHER
+}
+
+model MediaCampaign {
+  id             String     @id @default(cuid())
+  orgId          String
+  clientId       String
+  projectId      String?
+  platform       AdPlatform
+  name           String
+  startDate      DateTime
+  endDate        DateTime?
+  /// Money spent on the ad platform on the client's behalf — never agency revenue.
+  mediaSpend     Decimal    @default(0) @db.Decimal(14, 2)
+  managementFee  Decimal    @default(0) @db.Decimal(14, 2)
+  productionFee  Decimal    @default(0) @db.Decimal(14, 2)
+  impressions    Int        @default(0)
+  clicks         Int        @default(0)
+  conversions    Int        @default(0)
+  /// MANUAL until a live integration is connected.
+  source         String     @default("MANUAL")
+  notes          String?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  org     Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  client  Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  project Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([orgId])
+}
+
+model IntegrationConnection {
+  id          String    @id @default(cuid())
+  orgId       String
+  provider    String
+  status      String    @default("NOT_CONNECTED")
+  accountRef  String?
+  lastSyncAt  DateTime?
+  lastError   String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, provider])
+}
+
+// ───────────────────────────── Reports & AI ─────────────────────────────
+
+model SharedReport {
+  id        String   @id @default(cuid())
+  orgId     String
+  clientId  String
+  title     String
+  periodFrom DateTime
+  periodTo  DateTime
+  /// Immutable snapshot of the numbers shared with the client.
+  payload   Json
+  createdAt DateTime @default(now())
+
+  org    Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  client Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@index([clientId])
+}
+
+model AdvisorMessage {
+  id        String   @id @default(cuid())
+  orgId     String
+  userId    String
+  role      String
+  content   String
+  mode      String
+  createdAt DateTime @default(now())
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, userId, createdAt])
+}
