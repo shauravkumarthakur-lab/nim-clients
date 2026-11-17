@@ -33,7 +33,7 @@ describe("period resolution", () => {
 
 describe("demo advisor", () => {
   const facts = {
-    currency: "INR", targetContributionMarginPct: 35,
+    currency: "INR", targetContributionMarginPct: 35, periods: { last3Months: "2026-08-01 to 2026-10-31" },
     clientsLast3Months: [{ name: "Low Co", href: "/clients/1", revenue: 100000, directCosts: 90000, teamTimeCost: 50000, freelancerCost: 30000, productionCost: 10000, contributionProfit: 10000, contributionMarginPct: 10, allocatedOverhead: 5000, netProfit: 5000, outOfScopeCost: 0 }],
     productionEconomicsByType: [{ type: "Reel", units: 10, avgCostPerUnit: 4500, avgRevenuePerUnit: 9000, avgProfitPerUnit: 4500, avgHoursPerUnit: 9, avgRevisions: 1.5, marginPct: 50 }],
     costPerShootDay: { shootDays: 4, totalCost: 80000, perDay: 20000 },

@@ -44,6 +44,6 @@ describe("CSV export", () => {
     const csv = toCsv({ key: "k", title: "t", description: "", columns: [{ header: "Name", type: "text" }, { header: "Amount", type: "money" }], rows: [["=HYPERLINK(\"x\")", -1250.5], ["a, \"b\"", 3]] });
     const lines = csv.replace("﻿", "").split("\r\n");
     expect(lines[1]).toBe(`"'=HYPERLINK(""x"")",-1250.50`);
-    expect(lines[2]).toBe(`"a, ""b""",3`);
+    expect(lines[2]).toBe(`"a, ""b""",3.00`); // money columns always carry 2 decimals
   });
 });
