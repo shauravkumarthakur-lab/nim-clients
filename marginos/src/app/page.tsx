@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Logo, LogoMark } from "@/components/logo";
 import { LinkButton } from "@/components/ui/button";

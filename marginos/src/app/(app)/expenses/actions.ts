@@ -1,7 +1,7 @@
 "use server";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { defineAction, zBool, zDate, zId, zMoney, zText } from "@/lib/action";
+import { defineAction, zBool, zDate, zId, zMoney } from "@/lib/action";
 import { assertOwned } from "@/lib/owned";
 import { audit } from "@/lib/audit";
 import { ActionError } from "@/lib/tenant";

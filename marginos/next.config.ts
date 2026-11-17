@@ -11,6 +11,10 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  distDir: process.env.NEXT_DIST_DIR || ".next",
+  // Render metadata (incl. <link rel="manifest">) in <head> for every browser, not streamed into <body>,
+  // so Chrome on Android detects the PWA manifest and offers "Install app".
+  htmlLimitedBots: /.*/,
   serverExternalPackages: ["@prisma/client", "bcryptjs"],
   async headers() {
     return [

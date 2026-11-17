@@ -18,7 +18,16 @@ const eslintConfig = [
       "out/**",
       "build/**",
       "next-env.d.ts",
+      ".next-e2e/**",
+      "playwright-report/**",
+      "test-results/**",
     ],
+  },
+  {
+    rules: {
+      // Underscore-prefixed bindings are intentionally unused (destructuring to omit keys).
+      "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_", varsIgnorePattern: "^_", destructuredArrayIgnorePattern: "^_" }],
+    },
   },
 ];
 
