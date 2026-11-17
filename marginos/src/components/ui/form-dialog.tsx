@@ -37,6 +37,7 @@ export function FormDialog({
   const [open, setOpen] = React.useState(false);
   const [pending, start] = React.useTransition();
   const [err, setErr] = React.useState<{ error?: string; fieldErrors?: Record<string, string> }>({});
+  const [link, setLink] = React.useState<string | null>(null);
   const router = useRouter();
 
   const submit = (e: React.FormEvent<HTMLFormElement>) => {
@@ -48,6 +49,8 @@ export function FormDialog({
       const res = await action(null, fd);
       if (res.ok) {
         setErr({});
+        const l = res.data && typeof res.data === "object" && "link" in res.data ? String((res.data as { link: string }).link) : null;
+        if (l) { setLink(l); router.refresh(); return; }
         setOpen(false);
         toast(res.message ?? onSuccessMessage ?? (mode === "create" ? "Created" : "Saved"));
         router.refresh();
@@ -63,7 +66,17 @@ export function FormDialog({
     );
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) setErr({}); }} title={title} description={description} trigger={trigger ?? defaultTrigger} wide={wide}>
+    <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) { setErr({}); setLink(null); } }} title={title} description={description} trigger={trigger ?? defaultTrigger} wide={wide}>
+      {link ? (
+        <div className="flex flex-col gap-3" data-testid={testId ? `${testId}-link` : undefined}>
+          <p className="text-sm">Done. Share this link (also emailed, if an email provider is configured):</p>
+          <input readOnly value={link} className="w-full rounded-lg border border-border bg-surface-2 px-3 py-2 text-[13px]" onFocus={(e) => e.currentTarget.select()} />
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => navigator.clipboard?.writeText(link).then(() => toast("Link copied"))}>Copy link</Button>
+            <Button onClick={() => { setOpen(false); setLink(null); }}>Close</Button>
+          </div>
+        </div>
+      ) : (
       <form onSubmit={submit} className="flex flex-col gap-4" data-testid={testId} noValidate>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {fields.map((f) => <FieldInput key={f.name} f={f} def={defaults[f.name]} error={err.fieldErrors?.[f.name]} />)}
@@ -74,6 +87,7 @@ export function FormDialog({
           <Button type="submit" disabled={pending} data-testid={testId ? `${testId}-submit` : undefined}>{pending ? "Saving…" : submitLabel}</Button>
         </div>
       </form>
+      )}
     </Dialog>
   );
 }

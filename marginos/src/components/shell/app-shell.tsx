@@ -31,7 +31,7 @@ export function AppShell({ nav, user, org, orgs, role, children, logout, switchO
   const active = (href: string) => path === href || path.startsWith(href + "/");
   const groups = [...new Set(nav.map((n) => n.group))];
   const mobile = nav.filter((n) => n.mobile).slice(0, 4);
-  React.useEffect(() => setMore(false), [path]);
+  React.useEffect(() => { setMore(false); }, [path]);
 
   return (
     <div className="min-h-dvh">

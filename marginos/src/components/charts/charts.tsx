@@ -12,7 +12,7 @@ const PALETTE = {
 function usePalette() {
   const { resolvedTheme } = useTheme();
   const [m, setM] = React.useState(false);
-  React.useEffect(() => setM(true), []);
+  React.useEffect(() => { setM(true); }, []);
   return PALETTE[m && resolvedTheme === "dark" ? "dark" : "light"];
 }
 
